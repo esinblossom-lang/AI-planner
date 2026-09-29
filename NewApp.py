@@ -12,7 +12,7 @@ import streamlit as st
 # SETTINGS
 # =========================================================
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.5-flash-lite"
 
 PRIORITIES = ["High", "Medium", "Low"]
 
