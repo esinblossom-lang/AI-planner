@@ -247,6 +247,29 @@ st.markdown("""
 
 
     /* =========================
+       NOTES SECTION
+       ========================= */
+
+    .note-title {
+        color: #826E8B;
+
+        font-weight: 700;
+
+        font-size: 17px;
+
+        margin-bottom: 4px;
+    }
+
+    .note-body {
+        color: #5A4A66;
+
+        font-size: 15px;
+
+        line-height: 1.5;
+    }
+
+
+    /* =========================
        PRIORITY + DUE DATE
        ========================= */
 
@@ -334,6 +357,22 @@ st.markdown("""
 # HELPERS
 # =========================================================
 
+def html_block(markup):
+    """
+    Flatten HTML into one line before sending it to st.markdown.
+
+    Markdown treats lines indented by 4+ spaces (or anything after
+    a blank line) as a code block, which is why raw HTML tags were
+    showing up on screen. Collapsing the whitespace fixes that.
+    """
+
+    return re.sub(
+        r"\s*\n\s*",
+        " ",
+        markup.strip()
+    )
+
+
 def parse_date(value):
     """Convert YYYY-MM-DD text into a date."""
 
@@ -358,6 +397,14 @@ def md_escape(text):
         r"\\\1",
         str(text)
     )
+
+
+def safe_html_text(text):
+    """Escape text for HTML and keep line breaks."""
+
+    return html.escape(
+        str(text)
+    ).replace("\n", "<br>")
 
 
 # =========================================================
@@ -515,6 +562,50 @@ def sort_tasks(tasks, mode):
     # "Order added"
 
     return tasks
+
+
+# =========================================================
+# NOTE ACTIONS
+# =========================================================
+
+def add_note(title, body):
+    """Add a standalone note to the current session."""
+
+    st.session_state.notes.append({
+
+        "id": uuid.uuid4().hex,
+
+        "title": title.strip(),
+
+        "body": body.strip()
+    })
+
+
+def update_note(note_id, title, body):
+    """Update an existing note."""
+
+    for note in st.session_state.notes:
+
+        if note["id"] == note_id:
+
+            note["title"] = title.strip()
+
+            note["body"] = body.strip()
+
+            break
+
+
+def delete_note(note_id):
+    """Delete one note."""
+
+    st.session_state.notes = [
+
+        note
+
+        for note in st.session_state.notes
+
+        if note["id"] != note_id
+    ]
 
 
 # =========================================================
@@ -723,16 +814,21 @@ def ask_ai_for_tasks(goal):
 # SESSION STATE
 # =========================================================
 
-# Tasks belong to the current Streamlit session.
+# Tasks and notes belong to the current Streamlit session.
 #
 # There is NO shared tasks.json file.
 #
 # Therefore users opening separate Streamlit sessions
-# receive separate task lists.
+# receive separate task lists and notes.
 
 if "tasks" not in st.session_state:
 
     st.session_state.tasks = []
+
+
+if "notes" not in st.session_state:
+
+    st.session_state.notes = []
 
 
 if "sort_mode" not in st.session_state:
@@ -744,17 +840,17 @@ if "sort_mode" not in st.session_state:
 # HEADER
 # =========================================================
 
-st.markdown("""
-<div class="header">
+st.markdown(
 
-    <h1>💜 My To-Do List</h1>
+    html_block("""
+    <div class="header">
+        <h1>💜 My To-Do List</h1>
+        <p>Get organised. Get things done. ✨</p>
+    </div>
+    """),
 
-    <p>
-        Get organised. Get things done. ✨
-    </p>
-
-</div>
-""", unsafe_allow_html=True)
+    unsafe_allow_html=True
+)
 
 
 # =========================================================
@@ -788,19 +884,12 @@ with col1:
 
     st.markdown(
 
-        f"""
+        html_block(f"""
         <div class="stat-card">
-
-            <div class="stat-number">
-                {total_tasks}
-            </div>
-
-            <div class="stat-label">
-                📋 TOTAL TASKS
-            </div>
-
+            <div class="stat-number">{total_tasks}</div>
+            <div class="stat-label">📋 TOTAL TASKS</div>
         </div>
-        """,
+        """),
 
         unsafe_allow_html=True
     )
@@ -810,19 +899,12 @@ with col2:
 
     st.markdown(
 
-        f"""
+        html_block(f"""
         <div class="stat-card">
-
-            <div class="stat-number">
-                {completed_count}
-            </div>
-
-            <div class="stat-label">
-                ✅ COMPLETED
-            </div>
-
+            <div class="stat-number">{completed_count}</div>
+            <div class="stat-label">✅ COMPLETED</div>
         </div>
-        """,
+        """),
 
         unsafe_allow_html=True
     )
@@ -1063,18 +1145,18 @@ def render_task(
 
             if task.get("note", "").strip():
 
-                safe_note = html.escape(
+                safe_note = safe_html_text(
                     task["note"]
                 )
 
 
                 st.markdown(
 
-                    f"""
-                    <div class="task-note">
-                        📝 {safe_note}
-                    </div>
-                    """,
+                    html_block(
+                        f'<div class="task-note">'
+                        f'📝 {safe_note}'
+                        f'</div>'
+                    ),
 
                     unsafe_allow_html=True
                 )
@@ -1447,23 +1529,12 @@ st.progress(
 
 st.markdown(
 
-    f"""
-    <div style="
-        text-align: center;
-        color: #826E8B;
-        margin-top: -8px;
-    ">
-
-        <strong>{completed_count}</strong>
-
-        of
-
-        <strong>{total_tasks}</strong>
-
-        tasks completed
-
+    html_block(f"""
+    <div style="text-align: center; color: #826E8B; margin-top: -8px;">
+        <strong>{completed_count}</strong> of
+        <strong>{total_tasks}</strong> tasks completed
     </div>
-    """,
+    """),
 
     unsafe_allow_html=True
 )
@@ -1486,24 +1557,242 @@ if completed_count > 0:
 
 
 # =========================================================
+# NOTES
+# =========================================================
+
+st.markdown(
+    "## 📝 Notes"
+)
+
+
+with st.form(
+    "add_note_form",
+    clear_on_submit=True
+):
+
+    note_title = st.text_input(
+
+        "Note title",
+
+        placeholder=(
+            "Note title (optional)"
+        ),
+
+        label_visibility="collapsed"
+    )
+
+
+    note_body = st.text_area(
+
+        "Note text",
+
+        placeholder=(
+            "Write your note here..."
+        ),
+
+        label_visibility="collapsed",
+
+        height=110
+    )
+
+
+    add_note_clicked = st.form_submit_button(
+
+        "💾 Save Note",
+
+        use_container_width=True
+    )
+
+
+if add_note_clicked:
+
+    if note_title.strip() or note_body.strip():
+
+        add_note(
+
+            note_title,
+
+            note_body
+        )
+
+
+        st.toast(
+            "Note saved! 📝"
+        )
+
+
+        st.rerun()
+
+    else:
+
+        st.warning(
+            "Write something in your note first."
+        )
+
+
+if not st.session_state.notes:
+
+    st.info(
+        "📭 No notes yet. "
+        "Write your first note above!"
+    )
+
+else:
+
+    # Newest notes first.
+
+    for note in reversed(
+        st.session_state.notes
+    ):
+
+        note_id = note["id"]
+
+
+        with st.container(
+            border=True
+        ):
+
+            n_main, n_edit, n_delete = st.columns(
+
+                [8, 1.3, 1.3],
+
+                vertical_alignment="center"
+            )
+
+
+            with n_main:
+
+                display_title = (
+                    note["title"]
+                    or "Untitled note"
+                )
+
+
+                body_html = ""
+
+
+                if note["body"]:
+
+                    body_html = (
+                        f'<div class="note-body">'
+                        f'{safe_html_text(note["body"])}'
+                        f'</div>'
+                    )
+
+
+                st.markdown(
+
+                    html_block(
+                        f'<div class="note-title">'
+                        f'{html.escape(display_title)}'
+                        f'</div>'
+                        f'{body_html}'
+                    ),
+
+                    unsafe_allow_html=True
+                )
+
+
+            with n_edit:
+
+                with st.popover("✏️"):
+
+                    with st.form(
+                        f"edit_note_form_{note_id}"
+                    ):
+
+                        edit_note_title = st.text_input(
+
+                            "Title",
+
+                            value=note["title"]
+                        )
+
+
+                        edit_note_body = st.text_area(
+
+                            "Note",
+
+                            value=note["body"],
+
+                            height=140
+                        )
+
+
+                        save_note_clicked = (
+                            st.form_submit_button(
+
+                                "💾 Save",
+
+                                use_container_width=True
+                            )
+                        )
+
+
+                    if save_note_clicked:
+
+                        if (
+                            edit_note_title.strip()
+                            or edit_note_body.strip()
+                        ):
+
+                            update_note(
+
+                                note_id,
+
+                                edit_note_title,
+
+                                edit_note_body
+                            )
+
+
+                            st.toast(
+                                "Note updated! ✨"
+                            )
+
+
+                            st.rerun()
+
+                        else:
+
+                            st.warning(
+                                "The note can't be empty."
+                            )
+
+
+            with n_delete:
+
+                st.button(
+
+                    "🗑️",
+
+                    key=f"delete_note_{note_id}",
+
+                    on_click=delete_note,
+
+                    args=(note_id,)
+                )
+
+
+# =========================================================
 # AI PLANNER
 # =========================================================
 
-st.markdown("""
+st.markdown(
 
-<div class="ai-box">
+    html_block("""
+    <div class="ai-box">
+        <h2>🤖 AI Planner</h2>
+        <p>
+            Tell your AI assistant what you want
+            to accomplish, and it will break your
+            goal into smaller tasks for you.
+        </p>
+    </div>
+    """),
 
-    <h2>🤖 AI Planner</h2>
-
-    <p>
-        Tell your AI assistant what you want
-        to accomplish, and it will break your
-        goal into smaller tasks for you.
-    </p>
-
-</div>
-
-""", unsafe_allow_html=True)
+    unsafe_allow_html=True
+)
 
 
 with st.form(
