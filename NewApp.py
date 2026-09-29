@@ -4,7 +4,6 @@ import os
 import re
 import uuid
 from datetime import date
-from pathlib import Path
 
 import streamlit as st
 
@@ -13,19 +12,25 @@ import streamlit as st
 # SETTINGS
 # =========================================================
 
-# Tasks are saved in this file, next to app.py
-DATA_FILE = Path(__file__).parent / "tasks.json"
-
-# The AI model the planner uses. Change it here if you ever need to.
+# Gemini AI model
 MODEL = "gemini-3.5-flash-lite"
 
 PRIORITIES = ["High", "Medium", "Low"]
-PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 
-# The three places a task can appear (used to keep checkboxes in sync)
+PRIORITY_RANK = {
+    "High": 0,
+    "Medium": 1,
+    "Low": 2
+}
+
+# Used to keep task checkboxes synchronized between tabs
 PREFIXES = ("all", "active", "done")
 
-SORT_OPTIONS = ["Order added", "Priority", "Due date"]
+SORT_OPTIONS = [
+    "Order added",
+    "Priority",
+    "Due date"
+]
 
 
 # =========================================================
@@ -46,25 +51,27 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-    /* -------------------------
+    /* =========================
        MAIN APP
-    ------------------------- */
+       ========================= */
 
     .stApp {
         background-color: #F5CDD0;
     }
 
-    /* -------------------------
+
+    /* =========================
        HEADINGS
-    ------------------------- */
+       ========================= */
 
     h1, h2, h3 {
         color: #826E8B !important;
     }
 
-    /* -------------------------
+
+    /* =========================
        HEADER
-    ------------------------- */
+       ========================= */
 
     .header {
         background: linear-gradient(
@@ -95,9 +102,10 @@ st.markdown("""
         margin: 0;
     }
 
-    /* -------------------------
+
+    /* =========================
        STATISTICS CARDS
-    ------------------------- */
+       ========================= */
 
     .stat-card {
         background-color: white;
@@ -123,37 +131,45 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* -------------------------
-       TEXT INPUT
-    ------------------------- */
 
-    .stTextInput input {
+    /* =========================
+       TEXT INPUTS
+       ========================= */
+
+    .stTextInput input,
+    .stTextArea textarea {
         border: 2px solid #E69CBA;
         border-radius: 12px;
         background-color: white;
     }
 
-    .stTextInput input:focus {
+    .stTextInput input:focus,
+    .stTextArea textarea:focus {
         border-color: #EB6E9B;
         box-shadow: 0 0 0 2px #F4B3C7;
     }
 
-    /* Colour of the text you type */
     .stTextInput input,
+    .stTextArea textarea,
     .stDateInput input {
         color: #5A4A66 !important;
     }
 
-    /* Colour of the faded hint text */
     .stTextInput input::placeholder,
+    .stTextArea textarea::placeholder,
     .stDateInput input::placeholder {
         color: #B58AA5 !important;
         opacity: 1;
     }
 
-    /* Labels for dropdowns, dates and checkboxes */
+
+    /* =========================
+       LABELS
+       ========================= */
+
     .stSelectbox label p,
-    .stDateInput label p {
+    .stDateInput label p,
+    .stTextArea label p {
         color: #826E8B !important;
         font-weight: 600;
     }
@@ -166,12 +182,14 @@ st.markdown("""
         color: #5A4A66 !important;
     }
 
-    /* -------------------------
+
+    /* =========================
        BUTTONS
-    ------------------------- */
+       ========================= */
 
     .stButton > button,
-    [data-testid="stPopover"] button {
+    [data-testid="stPopover"] button,
+    .stFormSubmitButton > button {
         background-color: #EB6E9B;
         color: white;
 
@@ -184,14 +202,16 @@ st.markdown("""
     }
 
     .stButton > button:hover,
-    [data-testid="stPopover"] button:hover {
+    [data-testid="stPopover"] button:hover,
+    .stFormSubmitButton > button:hover {
         background-color: #826E8B;
         color: white;
     }
 
-    /* -------------------------
+
+    /* =========================
        TABS
-    ------------------------- */
+       ========================= */
 
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
@@ -206,15 +226,43 @@ st.markdown("""
         color: #EB6E9B !important;
     }
 
-    /* -------------------------
-       PRIORITY + DUE DATE TAGS
-    ------------------------- */
+
+    /* =========================
+       TASK NOTES
+       ========================= */
+
+    .task-note {
+        background-color: #F5CDD0;
+
+        border-left: 3px solid #E69CBA;
+
+        padding: 8px 12px;
+
+        margin: 4px 0 10px 32px;
+
+        border-radius: 8px;
+
+        color: #826E8B;
+
+        font-size: 14px;
+
+        font-style: italic;
+    }
+
+
+    /* =========================
+       PRIORITY + DUE DATE
+       ========================= */
 
     .badge {
         display: inline-block;
+
         padding: 2px 10px;
+
         border-radius: 20px;
+
         font-size: 12px;
+
         font-weight: 700;
     }
 
@@ -235,8 +283,11 @@ st.markdown("""
 
     .due {
         font-size: 12px;
+
         font-weight: 600;
+
         color: #826E8B;
+
         margin-left: 6px;
     }
 
@@ -244,9 +295,10 @@ st.markdown("""
         color: #C0392B;
     }
 
-    /* -------------------------
+
+    /* =========================
        AI PLANNER
-    ------------------------- */
+       ========================= */
 
     .ai-box {
         background: linear-gradient(
@@ -256,6 +308,7 @@ st.markdown("""
         );
 
         padding: 22px;
+
         border-radius: 20px;
 
         margin-top: 30px;
@@ -271,9 +324,10 @@ st.markdown("""
         color: #826E8B;
     }
 
-    /* -------------------------
+
+    /* =========================
        PROGRESS BAR
-    ------------------------- */
+       ========================= */
 
     .stProgress > div > div > div > div {
         background-color: #EB6E9B;
@@ -284,145 +338,161 @@ st.markdown("""
 
 
 # =========================================================
-# HELPERS: DATES + TEXT
+# HELPERS
 # =========================================================
 
 def parse_date(value):
-    """Turn 'YYYY-MM-DD' into a date. Returns None if empty or invalid."""
+    """Convert YYYY-MM-DD text into a date."""
+
     if not value:
         return None
+
     try:
         return date.fromisoformat(value)
+
     except (TypeError, ValueError):
         return None
 
 
 def md_escape(text):
-    """Stop task text from being read as markdown (stars, underscores, etc.)."""
-    return re.sub(r"([\\`*_{}\[\]()#+\-.!|~<>$:])", r"\\\1", text)
+    """Prevent task text from being interpreted as markdown."""
 
-
-# =========================================================
-# SAVING + LOADING
-# =========================================================
-
-def load_tasks():
-    """Read tasks from tasks.json. Returns an empty list if there's nothing usable."""
-    if not DATA_FILE.exists():
-        return []
-
-    try:
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-
-    tasks = []
-
-    if isinstance(data, list):
-        for raw in data:
-            if not isinstance(raw, dict):
-                continue
-
-            name = str(raw.get("name", "")).strip()
-            if not name:
-                continue
-
-            priority = raw.get("priority", "Medium")
-            if priority not in PRIORITIES:
-                priority = "Medium"
-
-            due = parse_date(raw.get("due"))
-
-            tasks.append({
-                "id": str(raw.get("id") or uuid.uuid4().hex),
-                "name": name,
-                "completed": bool(raw.get("completed", False)),
-                "priority": priority,
-                "due": due.isoformat() if due else None
-            })
-
-    return tasks
-
-
-def save_tasks():
-    """Write the current tasks to tasks.json."""
-    try:
-        DATA_FILE.write_text(
-            json.dumps(st.session_state.tasks, indent=2),
-            encoding="utf-8"
-        )
-    except OSError:
-        st.toast("Couldn't save your tasks to the file 😕")
+    return re.sub(
+        r"([\\`*_{}\[\]()#+\-.!|~<>$:])",
+        r"\\\1",
+        str(text)
+    )
 
 
 # =========================================================
 # TASK ACTIONS
 # =========================================================
 
-def add_task(name, priority="Medium", due=None):
+def add_task(
+    name,
+    note="",
+    priority="Medium",
+    due=None
+):
+    """Add a task to the current user's session."""
+
     st.session_state.tasks.append({
+
         "id": uuid.uuid4().hex,
+
         "name": name.strip(),
+
+        "note": note.strip(),
+
         "completed": False,
+
         "priority": priority,
-        "due": due.isoformat() if due else None
+
+        "due": due.isoformat()
+        if due
+        else None
     })
-    save_tasks()
 
 
 def toggle_task(task_id, key):
-    """Runs when a checkbox is ticked or unticked."""
+    """Update whether a task is completed."""
+
     new_value = st.session_state[key]
 
     for task in st.session_state.tasks:
+
         if task["id"] == task_id:
+
             task["completed"] = new_value
 
-    # Keep this task's checkbox the same in every tab
-    for prefix in PREFIXES:
-        st.session_state[f"{prefix}_{task_id}"] = new_value
 
-    save_tasks()
+    # Keep the same checkbox state
+    # across All / Active / Completed tabs
+
+    for prefix in PREFIXES:
+
+        st.session_state[
+            f"{prefix}_{task_id}"
+        ] = new_value
 
 
 def delete_task(task_id):
+    """Delete one task."""
+
     st.session_state.tasks = [
-        t for t in st.session_state.tasks if t["id"] != task_id
+        task
+        for task in st.session_state.tasks
+        if task["id"] != task_id
     ]
-    save_tasks()
 
 
 def delete_completed():
+    """Delete all completed tasks."""
+
     st.session_state.tasks = [
-        t for t in st.session_state.tasks if not t["completed"]
+        task
+        for task in st.session_state.tasks
+        if not task["completed"]
     ]
-    save_tasks()
 
 
-def update_task(task_id, name, priority, due):
+def update_task(
+    task_id,
+    name,
+    note,
+    priority,
+    due
+):
+    """Update an existing task."""
+
     for task in st.session_state.tasks:
+
         if task["id"] == task_id:
+
             task["name"] = name.strip()
+
+            task["note"] = note.strip()
+
             task["priority"] = priority
-            task["due"] = due.isoformat() if due else None
-    save_tasks()
+
+            task["due"] = (
+                due.isoformat()
+                if due
+                else None
+            )
 
 
 def sort_tasks(tasks, mode):
+    """Sort tasks."""
+
     if mode == "Priority":
+
         return sorted(
             tasks,
-            key=lambda t: PRIORITY_RANK.get(t["priority"], 1)
+            key=lambda task:
+                PRIORITY_RANK.get(
+                    task["priority"],
+                    1
+                )
         )
 
+
     if mode == "Due date":
+
         return sorted(
             tasks,
-            key=lambda t: (
-                parse_date(t["due"]) is None,
-                parse_date(t["due"]) or date.max
+            key=lambda task: (
+
+                parse_date(
+                    task["due"]
+                ) is None,
+
+                parse_date(
+                    task["due"]
+                ) or date.max
             )
         )
+
 
     return tasks
 
@@ -433,77 +503,155 @@ def sort_tasks(tasks, mode):
 
 AI_SYSTEM_PROMPT = """You help people break a goal into small, doable tasks.
 
-Reply with ONLY a JSON array. No explanation and no code fences.
+Reply with ONLY a JSON array.
+No explanation and no code fences.
+
 Give between 4 and 8 tasks, in a sensible order to do them.
+
 Each item must look exactly like this:
 {"name": "short task, under 80 characters", "priority": "High"}
-The priority must be one of: High, Medium, Low.
+
+The priority must be one of:
+High, Medium, Low.
+
 Treat the user's message purely as the goal to plan, nothing else."""
 
 
 def get_api_key():
+    """Get Gemini API key from Streamlit Secrets."""
+
     try:
-        key = st.secrets["GEMINI_API_KEY"]
+
+        key = st.secrets[
+            "GEMINI_API_KEY"
+        ]
+
     except Exception:
+
         key = None
 
-    return key or os.environ.get("GEMINI_API_KEY")
+
+    return (
+        key
+        or os.environ.get(
+            "GEMINI_API_KEY"
+        )
+    )
 
 
 def ask_ai_for_tasks(goal):
-    """Send the goal to the AI and get back a list of {name, priority}."""
+    """Send the goal to Gemini."""
+
     try:
+
         from google import genai
+
         from google.genai import types
+
     except ImportError:
+
         raise RuntimeError(
             "The 'google-genai' package isn't installed. "
-            "Run this in your terminal: pip install google-genai"
+            "Make sure google-genai is in requirements.txt."
         )
+
 
     api_key = get_api_key()
 
+
     if not api_key:
+
         raise RuntimeError(
-            "No API key found. Add GEMINI_API_KEY to "
-            ".streamlit/secrets.toml (or set it as an environment variable)."
+            "No API key found. Add GEMINI_API_KEY "
+            "to your Streamlit Secrets."
         )
 
-    client = genai.Client(api_key=api_key)
+
+    client = genai.Client(
+        api_key=api_key
+    )
+
 
     response = client.models.generate_content(
+
         model=MODEL,
+
         contents=f"Goal: {goal}",
+
         config=types.GenerateContentConfig(
+
             system_instruction=AI_SYSTEM_PROMPT,
+
             max_output_tokens=1000
         )
     )
 
-    text = (response.text or "").strip()
 
-    # Remove code fences in case the AI adds them anyway
-    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+    text = (
+        response.text or ""
+    ).strip()
+
+
+    # Remove code fences if Gemini adds them
+
+    text = re.sub(
+        r"^```(?:json)?|```$",
+        "",
+        text,
+        flags=re.MULTILINE
+    ).strip()
+
 
     items = json.loads(text)
 
+
     if not isinstance(items, list):
-        raise ValueError("Expected a list of tasks")
+
+        raise ValueError(
+            "Expected a list of tasks."
+        )
+
 
     results = []
 
+
     for item in items[:10]:
-        if not isinstance(item, dict):
+
+        if not isinstance(
+            item,
+            dict
+        ):
             continue
 
-        name = str(item.get("name", "")).strip()[:100]
-        priority = item.get("priority", "Medium")
+
+        name = str(
+            item.get(
+                "name",
+                ""
+            )
+        ).strip()[:100]
+
+
+        priority = item.get(
+            "priority",
+            "Medium"
+        )
+
 
         if priority not in PRIORITIES:
+
             priority = "Medium"
 
+
         if name:
-            results.append({"name": name, "priority": priority})
+
+            results.append({
+
+                "name": name,
+
+                "priority": priority
+            })
+
 
     return results
 
@@ -512,8 +660,19 @@ def ask_ai_for_tasks(goal):
 # SESSION STATE
 # =========================================================
 
+# IMPORTANT:
+#
+# Tasks are stored only in the current
+# Streamlit session.
+#
+# There is NO shared tasks.json file.
+#
+# Therefore one person's tasks are
+# not loaded into another person's session.
+
 if "tasks" not in st.session_state:
-    st.session_state.tasks = load_tasks()
+
+    st.session_state.tasks = []
 
 
 # =========================================================
@@ -522,8 +681,13 @@ if "tasks" not in st.session_state:
 
 st.markdown("""
 <div class="header">
+
     <h1>💜 My To-Do List</h1>
-    <p>Get organised. Get things done. ✨</p>
+
+    <p>
+        Get organised. Get things done. ✨
+    </p>
+
 </div>
 """, unsafe_allow_html=True)
 
@@ -532,30 +696,64 @@ st.markdown("""
 # STATISTICS
 # =========================================================
 
-total_tasks = len(st.session_state.tasks)
-completed_count = sum(1 for t in st.session_state.tasks if t["completed"])
+total_tasks = len(
+    st.session_state.tasks
+)
+
+
+completed_count = sum(
+
+    1
+
+    for task in st.session_state.tasks
+
+    if task["completed"]
+)
+
 
 col1, col2 = st.columns(2)
 
+
 with col1:
+
     st.markdown(
+
         f"""
         <div class="stat-card">
-            <div class="stat-number">{total_tasks}</div>
-            <div class="stat-label">📋 TOTAL TASKS</div>
+
+            <div class="stat-number">
+                {total_tasks}
+            </div>
+
+            <div class="stat-label">
+                📋 TOTAL TASKS
+            </div>
+
         </div>
         """,
+
         unsafe_allow_html=True
     )
 
+
 with col2:
+
     st.markdown(
+
         f"""
         <div class="stat-card">
-            <div class="stat-number">{completed_count}</div>
-            <div class="stat-label">✅ COMPLETED</div>
+
+            <div class="stat-number">
+                {completed_count}
+            </div>
+
+            <div class="stat-label">
+                ✅ COMPLETED
+            </div>
+
         </div>
         """,
+
         unsafe_allow_html=True
     )
 
@@ -564,208 +762,580 @@ with col2:
 # ADD TASK
 # =========================================================
 
-st.markdown("## ➕ Add a Task")
+st.markdown(
+    "## ➕ Add a Task"
+)
 
-with st.form("add_task_form", clear_on_submit=True):
+
+with st.form(
+
+    "add_task_form",
+
+    clear_on_submit=True
+):
+
+    # TASK NAME
+
     new_task = st.text_input(
+
         "Task",
-        placeholder="What do you need to get done?",
+
+        placeholder=(
+            "What do you need to get done?"
+        ),
+
         label_visibility="collapsed"
     )
 
+
+    # TASK NOTE
+
+    new_note = st.text_area(
+
+        "Note",
+
+        placeholder=(
+            "📝 Add a note about this task "
+            "(optional)..."
+        ),
+
+        label_visibility="collapsed",
+
+        height=90
+    )
+
+
     form_col1, form_col2 = st.columns(2)
 
+
+    # PRIORITY
+
     with form_col1:
+
         new_priority = st.selectbox(
+
             "Priority",
+
             PRIORITIES,
+
             index=1
         )
 
+
+    # DUE DATE
+
     with form_col2:
+
         new_due = st.date_input(
+
             "Due date (optional)",
+
             value=None
         )
 
+
     add_clicked = st.form_submit_button(
+
         "✨ Add Task",
+
         use_container_width=True
     )
 
+
+# PROCESS ADD TASK
+
 if add_clicked:
+
     if new_task.strip():
-        add_task(new_task, new_priority, new_due)
-        st.toast("Task added! 🎉")
+
+        add_task(
+
+            name=new_task,
+
+            note=new_note,
+
+            priority=new_priority,
+
+            due=new_due
+        )
+
+
+        st.toast(
+            "Task added! 🎉"
+        )
+
+
         st.rerun()
+
+
     else:
-        st.warning("Please enter a task first.")
+
+        st.warning(
+            "Please enter a task first."
+        )
 
 
 # =========================================================
 # TASK LIST
 # =========================================================
 
-st.markdown("## 📋 Your Tasks")
+st.markdown(
+    "## 📋 Your Tasks"
+)
 
-sort_mode = st.selectbox("Sort by", SORT_OPTIONS, key="sort_mode")
+
+sort_mode = st.selectbox(
+
+    "Sort by",
+
+    SORT_OPTIONS,
+
+    key="sort_mode"
+)
 
 
-def render_task(task, prefix):
-    """Draw one task row: checkbox, tags, edit button, delete button."""
+def render_task(
+    task,
+    prefix
+):
+    """Display one task."""
+
     task_id = task["id"]
-    checkbox_key = f"{prefix}_{task_id}"
 
-    # Set the checkbox's starting state once
+
+    checkbox_key = (
+        f"{prefix}_{task_id}"
+    )
+
+
+    # Set initial checkbox state
+
     if checkbox_key not in st.session_state:
-        st.session_state[checkbox_key] = task["completed"]
 
-    with st.container(border=True):
+        st.session_state[
+            checkbox_key
+        ] = task["completed"]
+
+
+    with st.container(
+        border=True
+    ):
 
         c_main, c_meta, c_edit, c_delete = st.columns(
+
             [5, 3, 1.2, 1.2],
+
             vertical_alignment="center"
         )
 
-        # ---- checkbox + name ----
+
+        # =================================================
+        # TASK NAME + NOTE
+        # =================================================
+
         with c_main:
-            label = md_escape(task["name"])
+
+            label = md_escape(
+                task["name"]
+            )
+
 
             if task["completed"]:
-                label = f"~~{label}~~"
 
-            st.checkbox(
-                label,
-                key=checkbox_key,
-                on_change=toggle_task,
-                args=(task_id, checkbox_key)
-            )
-
-        # ---- priority + due date tags ----
-        with c_meta:
-            priority = task["priority"]
-            tags = (
-                f'<span class="badge badge-{priority.lower()}">'
-                f'{html.escape(priority)}</span>'
-            )
-
-            due = parse_date(task["due"])
-
-            if due:
-                overdue = (not task["completed"]) and due < date.today()
-                css_class = "due overdue" if overdue else "due"
-                prefix_icon = "⚠️ " if overdue else "📅 "
-                tags += (
-                    f'<span class="{css_class}">'
-                    f'{prefix_icon}{due.strftime("%d %b %Y")}</span>'
+                label = (
+                    f"~~{label}~~"
                 )
 
-            st.markdown(tags, unsafe_allow_html=True)
 
-        # ---- edit ----
+            st.checkbox(
+
+                label,
+
+                key=checkbox_key,
+
+                on_change=toggle_task,
+
+                args=(
+                    task_id,
+                    checkbox_key
+                )
+            )
+
+
+            # Show the task's note
+
+            if task.get("note"):
+
+                safe_note = html.escape(
+                    task["note"]
+                )
+
+
+                st.markdown(
+
+                    f"""
+                    <div class="task-note">
+                        📝 {safe_note}
+                    </div>
+                    """,
+
+                    unsafe_allow_html=True
+                )
+
+
+        # =================================================
+        # PRIORITY + DUE DATE
+        # =================================================
+
+        with c_meta:
+
+            priority = task["priority"]
+
+
+            tags = (
+
+                f'<span class="badge '
+                f'badge-{priority.lower()}">'
+                f'{html.escape(priority)}'
+                f'</span>'
+            )
+
+
+            due = parse_date(
+                task["due"]
+            )
+
+
+            if due:
+
+                overdue = (
+
+                    not task["completed"]
+
+                    and due < date.today()
+                )
+
+
+                css_class = (
+
+                    "due overdue"
+
+                    if overdue
+
+                    else "due"
+                )
+
+
+                prefix_icon = (
+
+                    "⚠️ "
+
+                    if overdue
+
+                    else "📅 "
+                )
+
+
+                tags += (
+
+                    f'<span class="{css_class}">'
+
+                    f'{prefix_icon}'
+
+                    f'{due.strftime("%d %b %Y")}'
+
+                    f'</span>'
+                )
+
+
+            st.markdown(
+
+                tags,
+
+                unsafe_allow_html=True
+            )
+
+
+        # =================================================
+        # EDIT TASK
+        # =================================================
+
         with c_edit:
+
             with st.popover("✏️"):
-                with st.form(f"edit_form_{prefix}_{task_id}"):
+
+                with st.form(
+
+                    f"edit_form_{prefix}_{task_id}"
+                ):
+
                     edit_name = st.text_input(
+
                         "Task",
-                        value=task["name"],
-                        key=f"edit_name_{prefix}_{task_id}"
+
+                        value=task["name"]
                     )
+
+
+                    edit_note = st.text_area(
+
+                        "Note",
+
+                        value=task.get(
+                            "note",
+                            ""
+                        ),
+
+                        placeholder=(
+                            "Add a note..."
+                        ),
+
+                        height=100
+                    )
+
 
                     edit_priority = st.selectbox(
+
                         "Priority",
+
                         PRIORITIES,
-                        index=PRIORITIES.index(task["priority"]),
-                        key=f"edit_priority_{prefix}_{task_id}"
+
+                        index=PRIORITIES.index(
+                            task["priority"]
+                        )
                     )
+
 
                     edit_due = st.date_input(
+
                         "Due date (optional)",
-                        value=parse_date(task["due"]),
-                        key=f"edit_due_{prefix}_{task_id}"
+
+                        value=parse_date(
+                            task["due"]
+                        )
                     )
 
-                    save_clicked = st.form_submit_button(
-                        "💾 Save",
-                        use_container_width=True
+
+                    save_clicked = (
+                        st.form_submit_button(
+
+                            "💾 Save",
+
+                            use_container_width=True
+                        )
                     )
+
 
                 if save_clicked:
+
                     if edit_name.strip():
+
                         update_task(
+
                             task_id,
+
                             edit_name,
+
+                            edit_note,
+
                             edit_priority,
+
                             edit_due
                         )
-                        st.rerun()
-                    else:
-                        st.warning("The task can't be empty.")
 
-        # ---- delete ----
+
+                        st.rerun()
+
+
+                    else:
+
+                        st.warning(
+                            "The task can't be empty."
+                        )
+
+
+        # =================================================
+        # DELETE TASK
+        # =================================================
+
         with c_delete:
+
             st.button(
+
                 "🗑️",
-                key=f"delete_{prefix}_{task_id}",
+
+                key=(
+                    f"delete_"
+                    f"{prefix}_"
+                    f"{task_id}"
+                ),
+
                 on_click=delete_task,
+
                 args=(task_id,)
             )
 
 
-tab_all, tab_active, tab_completed = st.tabs([
-    f"All ({total_tasks})",
-    f"Active ({total_tasks - completed_count})",
-    f"Completed ({completed_count})"
-])
+# =========================================================
+# SORT TASKS
+# =========================================================
 
-all_sorted = sort_tasks(st.session_state.tasks, sort_mode)
-active_sorted = [t for t in all_sorted if not t["completed"]]
-done_sorted = [t for t in all_sorted if t["completed"]]
+all_sorted = sort_tasks(
+
+    st.session_state.tasks,
+
+    sort_mode
+)
 
 
-# ---------- ALL TASKS ----------
+active_sorted = [
+
+    task
+
+    for task in all_sorted
+
+    if not task["completed"]
+]
+
+
+done_sorted = [
+
+    task
+
+    for task in all_sorted
+
+    if task["completed"]
+]
+
+
+# =========================================================
+# TABS
+# =========================================================
+
+tab_all, tab_active, tab_completed = st.tabs(
+
+    [
+
+        f"All ({total_tasks})",
+
+        f"Active ({total_tasks - completed_count})",
+
+        f"Completed ({completed_count})"
+    ]
+)
+
+
+# =========================================================
+# ALL TASKS
+# =========================================================
+
 with tab_all:
+
     if not all_sorted:
-        st.info("✨ No tasks yet. Add your first task above!")
+
+        st.info(
+            "✨ No tasks yet. "
+            "Add your first task above!"
+        )
+
     else:
+
         for task in all_sorted:
-            render_task(task, "all")
+
+            render_task(
+                task,
+                "all"
+            )
 
 
-# ---------- ACTIVE TASKS ----------
+# =========================================================
+# ACTIVE TASKS
+# =========================================================
+
 with tab_active:
+
     if not active_sorted:
-        st.success("🎉 You have no active tasks!")
+
+        st.success(
+            "🎉 You have no active tasks!"
+        )
+
     else:
+
         for task in active_sorted:
-            render_task(task, "active")
+
+            render_task(
+                task,
+                "active"
+            )
 
 
-# ---------- COMPLETED TASKS ----------
+# =========================================================
+# COMPLETED TASKS
+# =========================================================
+
 with tab_completed:
+
     if not done_sorted:
-        st.info("📭 No completed tasks yet.")
+
+        st.info(
+            "📭 No completed tasks yet."
+        )
+
     else:
+
         for task in done_sorted:
-            render_task(task, "done")
+
+            render_task(
+                task,
+                "done"
+            )
 
 
 # =========================================================
 # PROGRESS
 # =========================================================
 
-st.markdown("## 📊 Your Progress")
+st.markdown(
+    "## 📊 Your Progress"
+)
 
-progress = completed_count / total_tasks if total_tasks > 0 else 0
-st.progress(progress)
+
+progress = (
+
+    completed_count / total_tasks
+
+    if total_tasks > 0
+
+    else 0
+)
+
+
+st.progress(
+    progress
+)
+
 
 st.markdown(
+
     f"""
-    <div style="text-align: center; color: #826E8B; margin-top: -8px;">
-        <strong>{completed_count}</strong> of <strong>{total_tasks}</strong>
+    <div style="
+        text-align: center;
+        color: #826E8B;
+        margin-top: -8px;
+    ">
+
+        <strong>{completed_count}</strong>
+
+        of
+
+        <strong>{total_tasks}</strong>
+
         tasks completed
+
     </div>
     """,
+
     unsafe_allow_html=True
 )
 
@@ -775,9 +1345,13 @@ st.markdown(
 # =========================================================
 
 if completed_count > 0:
+
     st.button(
+
         "🗑️ Delete Completed Tasks",
+
         use_container_width=True,
+
         on_click=delete_completed
     )
 
@@ -787,54 +1361,133 @@ if completed_count > 0:
 # =========================================================
 
 st.markdown("""
+
 <div class="ai-box">
+
     <h2>🤖 AI Planner</h2>
+
     <p>
-        Tell your AI assistant what you want to accomplish,
-        and it will help break your goal into smaller tasks.
+        Tell your AI assistant what you want
+        to accomplish, and it will help break
+        your goal into smaller tasks.
     </p>
+
 </div>
+
 """, unsafe_allow_html=True)
 
-with st.form("ai_planner_form"):
+
+with st.form(
+    "ai_planner_form"
+):
+
     goal = st.text_input(
+
         "Your goal",
-        placeholder="e.g. Prepare for my Python exam",
+
+        placeholder=(
+            "e.g. Prepare for my Python exam"
+        ),
+
         label_visibility="collapsed"
     )
 
+
     plan_button = st.form_submit_button(
+
         "✨ Plan It",
+
         use_container_width=True
     )
 
+
+# PROCESS AI REQUEST
+
 if plan_button:
+
     if goal.strip():
+
         try:
-            with st.spinner("Planning your tasks... 🤖"):
-                planned = ask_ai_for_tasks(goal.strip())
+
+            with st.spinner(
+                "Planning your tasks... 🤖"
+            ):
+
+                planned = ask_ai_for_tasks(
+                    goal.strip()
+                )
+
 
         except RuntimeError as error:
-            st.error(str(error))
+
+            st.error(
+                str(error)
+            )
+
 
         except ValueError:
+
             st.error(
-                "The AI's reply wasn't in the format I expected. "
+
+                "The AI's reply wasn't in "
+                "the format I expected. "
                 "Please try again."
             )
 
+
         except Exception as error:
-            st.error(f"Something went wrong talking to the AI: {error}")
+
+            st.error(
+
+                f"Something went wrong "
+                f"talking to the AI: {error}"
+            )
+
 
         else:
-            if planned:
-                for item in planned:
-                    add_task(item["name"], item["priority"])
 
-                st.toast(f"Added {len(planned)} tasks! 🎉")
+            if planned:
+
+                for item in planned:
+
+                    # AI-created tasks start
+                    # with an empty note.
+                    # The user can add a note
+                    # later using ✏️.
+
+                    add_task(
+
+                        name=item["name"],
+
+                        note="",
+
+                        priority=item["priority"]
+                    )
+
+
+                st.toast(
+
+                    f"Added {len(planned)} "
+                    f"tasks! 🎉"
+                )
+
+
                 st.rerun()
+
+
             else:
-                st.warning("The AI didn't come back with any tasks. Try again.")
+
+                st.warning(
+
+                    "The AI didn't come back "
+                    "with any tasks. Try again."
+                )
+
 
     else:
-        st.warning("Tell me what you want to accomplish first.")
+
+        st.warning(
+
+            "Tell me what you want "
+            "to accomplish first."
+        )
