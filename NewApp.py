@@ -12,8 +12,7 @@ import streamlit as st
 # SETTINGS
 # =========================================================
 
-# Gemini AI model
-MODEL = "gemini-3.5-flash-lite"
+MODEL = "gemini-2.5-flash"
 
 PRIORITIES = ["High", "Medium", "Low"]
 
@@ -23,7 +22,6 @@ PRIORITY_RANK = {
     "Low": 2
 }
 
-# Used to keep task checkboxes synchronized between tabs
 PREFIXES = ("all", "active", "done")
 
 SORT_OPTIONS = [
@@ -169,17 +167,15 @@ st.markdown("""
 
     .stSelectbox label p,
     .stDateInput label p,
-    .stTextArea label p {
+    .stTextArea label p,
+    .stTextInput label p,
+    .stCheckbox label p {
         color: #826E8B !important;
         font-weight: 600;
     }
 
     .stSelectbox [data-baseweb="select"] div {
         color: #5A4A66;
-    }
-
-    .stCheckbox label p {
-        color: #5A4A66 !important;
     }
 
 
@@ -236,7 +232,7 @@ st.markdown("""
 
         border-left: 3px solid #E69CBA;
 
-        padding: 8px 12px;
+        padding: 9px 12px;
 
         margin: 4px 0 10px 32px;
 
@@ -246,7 +242,7 @@ st.markdown("""
 
         font-size: 14px;
 
-        font-style: italic;
+        line-height: 1.5;
     }
 
 
@@ -283,11 +279,8 @@ st.markdown("""
 
     .due {
         font-size: 12px;
-
         font-weight: 600;
-
         color: #826E8B;
-
         margin-left: 6px;
     }
 
@@ -347,15 +340,18 @@ def parse_date(value):
     if not value:
         return None
 
+    if isinstance(value, date):
+        return value
+
     try:
-        return date.fromisoformat(value)
+        return date.fromisoformat(str(value))
 
     except (TypeError, ValueError):
         return None
 
 
 def md_escape(text):
-    """Prevent task text from being interpreted as markdown."""
+    """Prevent task text from being interpreted as Markdown."""
 
     return re.sub(
         r"([\\`*_{}\[\]()#+\-.!|~<>$:])",
@@ -374,7 +370,7 @@ def add_task(
     priority="Medium",
     due=None
 ):
-    """Add a task to the current user's session."""
+    """Add a task to the current Streamlit session."""
 
     st.session_state.tasks.append({
 
@@ -386,11 +382,17 @@ def add_task(
 
         "completed": False,
 
-        "priority": priority,
+        "priority": (
+            priority
+            if priority in PRIORITIES
+            else "Medium"
+        ),
 
-        "due": due.isoformat()
-        if due
-        else None
+        "due": (
+            due.isoformat()
+            if isinstance(due, date)
+            else None
+        )
     })
 
 
@@ -405,14 +407,19 @@ def toggle_task(task_id, key):
 
             task["completed"] = new_value
 
+            break
 
-    # Keep the same checkbox state
-    # across All / Active / Completed tabs
+
+    # Synchronize checkbox states across tabs.
 
     for prefix in PREFIXES:
 
-        st.session_state[
+        checkbox_key = (
             f"{prefix}_{task_id}"
+        )
+
+        st.session_state[
+            checkbox_key
         ] = new_value
 
 
@@ -420,8 +427,11 @@ def delete_task(task_id):
     """Delete one task."""
 
     st.session_state.tasks = [
+
         task
+
         for task in st.session_state.tasks
+
         if task["id"] != task_id
     ]
 
@@ -430,8 +440,11 @@ def delete_completed():
     """Delete all completed tasks."""
 
     st.session_state.tasks = [
+
         task
+
         for task in st.session_state.tasks
+
         if not task["completed"]
     ]
 
@@ -453,27 +466,32 @@ def update_task(
 
             task["note"] = note.strip()
 
-            task["priority"] = priority
+            task["priority"] = (
+                priority
+                if priority in PRIORITIES
+                else "Medium"
+            )
 
             task["due"] = (
                 due.isoformat()
-                if due
+                if isinstance(due, date)
                 else None
             )
 
+            break
+
 
 def sort_tasks(tasks, mode):
-    """Sort tasks."""
+    """Sort tasks according to the selected option."""
 
     if mode == "Priority":
 
         return sorted(
             tasks,
-            key=lambda task:
-                PRIORITY_RANK.get(
-                    task["priority"],
-                    1
-                )
+            key=lambda task: PRIORITY_RANK.get(
+                task.get("priority", "Medium"),
+                1
+            )
         )
 
 
@@ -484,15 +502,17 @@ def sort_tasks(tasks, mode):
             key=lambda task: (
 
                 parse_date(
-                    task["due"]
+                    task.get("due")
                 ) is None,
 
                 parse_date(
-                    task["due"]
+                    task.get("due")
                 ) or date.max
             )
         )
 
+
+    # "Order added"
 
     return tasks
 
@@ -501,30 +521,40 @@ def sort_tasks(tasks, mode):
 # AI PLANNER
 # =========================================================
 
-AI_SYSTEM_PROMPT = """You help people break a goal into small, doable tasks.
+AI_SYSTEM_PROMPT = """
+You help people break a goal into small, practical, doable tasks.
 
 Reply with ONLY a JSON array.
-No explanation and no code fences.
+Do not include an explanation.
+Do not use Markdown.
+Do not use code fences.
 
-Give between 4 and 8 tasks, in a sensible order to do them.
+Give between 4 and 8 tasks in a sensible order.
 
-Each item must look exactly like this:
-{"name": "short task, under 80 characters", "priority": "High"}
+Each item must look exactly like:
 
-The priority must be one of:
+{
+  "name": "short task",
+  "priority": "High"
+}
+
+The task name must be under 80 characters.
+
+The priority must be exactly one of:
 High, Medium, Low.
 
-Treat the user's message purely as the goal to plan, nothing else."""
+Treat the user's message only as the goal they want to accomplish.
+"""
 
 
 def get_api_key():
-    """Get Gemini API key from Streamlit Secrets."""
+    """Get the Gemini API key from Streamlit Secrets or environment."""
 
     try:
 
-        key = st.secrets[
+        key = st.secrets.get(
             "GEMINI_API_KEY"
-        ]
+        )
 
     except Exception:
 
@@ -540,7 +570,7 @@ def get_api_key():
 
 
 def ask_ai_for_tasks(goal):
-    """Send the goal to Gemini."""
+    """Send the user's goal to Gemini and return tasks."""
 
     try:
 
@@ -551,8 +581,8 @@ def ask_ai_for_tasks(goal):
     except ImportError:
 
         raise RuntimeError(
-            "The 'google-genai' package isn't installed. "
-            "Make sure google-genai is in requirements.txt."
+            "The google-genai package is not installed. "
+            "Add google-genai to requirements.txt."
         )
 
 
@@ -562,8 +592,8 @@ def ask_ai_for_tasks(goal):
     if not api_key:
 
         raise RuntimeError(
-            "No API key found. Add GEMINI_API_KEY "
-            "to your Streamlit Secrets."
+            "No Gemini API key was found. "
+            "Add GEMINI_API_KEY to your Streamlit Secrets."
         )
 
 
@@ -576,11 +606,15 @@ def ask_ai_for_tasks(goal):
 
         model=MODEL,
 
-        contents=f"Goal: {goal}",
+        contents=(
+            f"Goal: {goal}"
+        ),
 
         config=types.GenerateContentConfig(
 
             system_instruction=AI_SYSTEM_PROMPT,
+
+            temperature=0.4,
 
             max_output_tokens=1000
         )
@@ -592,30 +626,54 @@ def ask_ai_for_tasks(goal):
     ).strip()
 
 
-    # Remove code fences if Gemini adds them
+    if not text:
+
+        raise ValueError(
+            "Gemini returned an empty response."
+        )
+
+
+    # Remove Markdown code fences if Gemini
+    # adds them despite the instruction.
 
     text = re.sub(
-        r"^```(?:json)?|```$",
+        r"^```(?:json)?\s*",
         "",
         text,
-        flags=re.MULTILINE
-    ).strip()
+        flags=re.IGNORECASE
+    )
+
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text
+    )
+
+    text = text.strip()
 
 
-    items = json.loads(text)
+    try:
+
+        items = json.loads(text)
+
+    except json.JSONDecodeError as error:
+
+        raise ValueError(
+            "The AI returned invalid JSON."
+        ) from error
 
 
     if not isinstance(items, list):
 
         raise ValueError(
-            "Expected a list of tasks."
+            "The AI response was not a task list."
         )
 
 
     results = []
 
 
-    for item in items[:10]:
+    for item in items[:8]:
 
         if not isinstance(
             item,
@@ -629,13 +687,18 @@ def ask_ai_for_tasks(goal):
                 "name",
                 ""
             )
-        ).strip()[:100]
+        ).strip()
 
 
-        priority = item.get(
-            "priority",
-            "Medium"
-        )
+        name = name[:80]
+
+
+        priority = str(
+            item.get(
+                "priority",
+                "Medium"
+            )
+        ).strip()
 
 
         if priority not in PRIORITIES:
@@ -660,19 +723,21 @@ def ask_ai_for_tasks(goal):
 # SESSION STATE
 # =========================================================
 
-# IMPORTANT:
-#
-# Tasks are stored only in the current
-# Streamlit session.
+# Tasks belong to the current Streamlit session.
 #
 # There is NO shared tasks.json file.
 #
-# Therefore one person's tasks are
-# not loaded into another person's session.
+# Therefore users opening separate Streamlit sessions
+# receive separate task lists.
 
 if "tasks" not in st.session_state:
 
     st.session_state.tasks = []
+
+
+if "sort_mode" not in st.session_state:
+
+    st.session_state.sort_mode = "Order added"
 
 
 # =========================================================
@@ -708,6 +773,11 @@ completed_count = sum(
     for task in st.session_state.tasks
 
     if task["completed"]
+)
+
+
+active_count = (
+    total_tasks - completed_count
 )
 
 
@@ -768,13 +838,11 @@ st.markdown(
 
 
 with st.form(
-
     "add_task_form",
-
     clear_on_submit=True
 ):
 
-    # TASK NAME
+    # Task name
 
     new_task = st.text_input(
 
@@ -788,7 +856,7 @@ with st.form(
     )
 
 
-    # TASK NOTE
+    # Task note
 
     new_note = st.text_area(
 
@@ -808,7 +876,7 @@ with st.form(
     form_col1, form_col2 = st.columns(2)
 
 
-    # PRIORITY
+    # Priority
 
     with form_col1:
 
@@ -822,16 +890,24 @@ with st.form(
         )
 
 
-    # DUE DATE
+    # Optional due date
 
     with form_col2:
 
-        new_due = st.date_input(
-
-            "Due date (optional)",
-
-            value=None
+        has_due_date = st.checkbox(
+            "📅 Add a due date"
         )
+
+
+        new_due = None
+
+
+        if has_due_date:
+
+            new_due = st.date_input(
+                "Due date",
+                value=date.today()
+            )
 
 
     add_clicked = st.form_submit_button(
@@ -842,7 +918,9 @@ with st.form(
     )
 
 
+# =========================================================
 # PROCESS ADD TASK
+# =========================================================
 
 if add_clicked:
 
@@ -866,7 +944,6 @@ if add_clicked:
 
 
         st.rerun()
-
 
     else:
 
@@ -908,7 +985,25 @@ def render_task(
     )
 
 
-    # Set initial checkbox state
+    # Make sure old tasks without notes
+    # still work correctly.
+
+    if "note" not in task:
+
+        task["note"] = ""
+
+
+    if "priority" not in task:
+
+        task["priority"] = "Medium"
+
+
+    if "due" not in task:
+
+        task["due"] = None
+
+
+    # Set initial checkbox state.
 
     if checkbox_key not in st.session_state:
 
@@ -962,9 +1057,11 @@ def render_task(
             )
 
 
-            # Show the task's note
+            # ---------------------------------------------
+            # NOTE
+            # ---------------------------------------------
 
-            if task.get("note"):
+            if task.get("note", "").strip():
 
                 safe_note = html.escape(
                     task["note"]
@@ -989,7 +1086,10 @@ def render_task(
 
         with c_meta:
 
-            priority = task["priority"]
+            priority = task.get(
+                "priority",
+                "Medium"
+            )
 
 
             tags = (
@@ -1002,7 +1102,7 @@ def render_task(
 
 
             due = parse_date(
-                task["due"]
+                task.get("due")
             )
 
 
@@ -1079,7 +1179,7 @@ def render_task(
 
                     edit_note = st.text_area(
 
-                        "Note",
+                        "📝 Note",
 
                         value=task.get(
                             "note",
@@ -1087,7 +1187,7 @@ def render_task(
                         ),
 
                         placeholder=(
-                            "Add a note..."
+                            "Add a note about this task..."
                         ),
 
                         height=100
@@ -1101,19 +1201,44 @@ def render_task(
                         PRIORITIES,
 
                         index=PRIORITIES.index(
-                            task["priority"]
+                            task.get(
+                                "priority",
+                                "Medium"
+                            )
                         )
                     )
 
 
-                    edit_due = st.date_input(
+                    existing_due = parse_date(
+                        task.get("due")
+                    )
 
-                        "Due date (optional)",
 
-                        value=parse_date(
-                            task["due"]
+                    edit_has_due = st.checkbox(
+
+                        "📅 Add a due date",
+
+                        value=(
+                            existing_due
+                            is not None
                         )
                     )
+
+
+                    edit_due = None
+
+
+                    if edit_has_due:
+
+                        edit_due = st.date_input(
+
+                            "Due date",
+
+                            value=(
+                                existing_due
+                                or date.today()
+                            )
+                        )
 
 
                     save_clicked = (
@@ -1144,8 +1269,12 @@ def render_task(
                         )
 
 
-                        st.rerun()
+                        st.toast(
+                            "Task updated! ✨"
+                        )
 
+
+                        st.rerun()
 
                     else:
 
@@ -1218,7 +1347,7 @@ tab_all, tab_active, tab_completed = st.tabs(
 
         f"All ({total_tasks})",
 
-        f"Active ({total_tasks - completed_count})",
+        f"Active ({active_count})",
 
         f"Completed ({completed_count})"
     ]
@@ -1368,8 +1497,8 @@ st.markdown("""
 
     <p>
         Tell your AI assistant what you want
-        to accomplish, and it will help break
-        your goal into smaller tasks.
+        to accomplish, and it will break your
+        goal into smaller tasks for you.
     </p>
 
 </div>
@@ -1401,11 +1530,21 @@ with st.form(
     )
 
 
+# =========================================================
 # PROCESS AI REQUEST
+# =========================================================
 
 if plan_button:
 
-    if goal.strip():
+    if not goal.strip():
+
+        st.warning(
+
+            "Tell me what you want "
+            "to accomplish first."
+        )
+
+    else:
 
         try:
 
@@ -1425,13 +1564,10 @@ if plan_button:
             )
 
 
-        except ValueError:
+        except ValueError as error:
 
             st.error(
-
-                "The AI's reply wasn't in "
-                "the format I expected. "
-                "Please try again."
+                str(error)
             )
 
 
@@ -1439,7 +1575,7 @@ if plan_button:
 
             st.error(
 
-                f"Something went wrong "
+                "Something went wrong "
                 f"talking to the AI: {error}"
             )
 
@@ -1450,18 +1586,15 @@ if plan_button:
 
                 for item in planned:
 
-                    # AI-created tasks start
-                    # with an empty note.
-                    # The user can add a note
-                    # later using ✏️.
-
                     add_task(
 
                         name=item["name"],
 
                         note="",
 
-                        priority=item["priority"]
+                        priority=item["priority"],
+
+                        due=None
                     )
 
 
@@ -1482,12 +1615,3 @@ if plan_button:
                     "The AI didn't come back "
                     "with any tasks. Try again."
                 )
-
-
-    else:
-
-        st.warning(
-
-            "Tell me what you want "
-            "to accomplish first."
-        )
