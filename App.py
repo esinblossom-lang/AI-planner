@@ -17,7 +17,7 @@ import streamlit as st
 DATA_FILE = Path(__file__).parent / "tasks.json"
 
 # The AI model the planner uses. Change it here if you ever need to.
-MODEL = "flash-lite-3.5"
+MODEL = "gemini-3.5-flash-lite"
 
 PRIORITIES = ["High", "Medium", "Low"]
 PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
